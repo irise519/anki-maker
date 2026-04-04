@@ -1,6 +1,16 @@
-streamlit==1.31.0
-pdfplumber==0.10.3
-python-docx==1.1.0
-openai==1.12.0
-python-dotenv==1.0.0
-genanki==0.13.0
+# 核心框架
+streamlit>=1.28.0
+
+# PDF/Word 解析（使用纯 Python 实现，避免编译问题）
+pypdf>=3.17.0
+python-docx>=1.0.0
+
+# AI 调用
+openai>=1.10.0
+python-dotenv>=1.0.0
+
+# Anki 导出
+genanki>=0.12.0
+
+# 其他依赖
+pillow>=10.0.0

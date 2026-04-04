@@ -183,10 +183,14 @@ def main():
             with st.status(f"📄 解析中...", expanded=True) as status:
                 try:
                     if file_type == "txt": raw_text = uploaded_file.getvalue().decode("utf-8")
-                    elif file_type == "pdf":
-                        with open("temp.pdf", "wb") as f: f.write(uploaded_file.read())
-                        with pdfplumber.open("temp.pdf") as pdf: raw_text = "\n".join([p.extract_text() for p in pdf.pages if p.extract_text()])
-                        os.remove("temp.pdf")
+from pypdf import PdfReader
+# ...
+elif file_type == "pdf":
+    with open("temp.pdf", "wb") as f:
+        f.write(uploaded_file.read())
+    reader = PdfReader("temp.pdf")
+    raw_text = "\n".join([page.extract_text() for page in reader.pages if page.extract_text()])
+    os.remove("temp.pdf")
                     elif file_type == "docx":
                         with open("temp.docx", "wb") as f: f.write(uploaded_file.read())
                         doc = Document("temp.docx")
