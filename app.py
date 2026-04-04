@@ -1,13 +1,12 @@
 # -*- coding: utf-8 -*-
 import streamlit as st
-import pdfplumber
+from pypdf import PdfReader
 from docx import Document
 import os
 import tempfile
 import genanki
 from main import generate_cards
 
-# ============ 📦 核心导出函数 ============
 # ============ 📦 核心导出函数 ============
 def export_to_apkg(cards, deck_name="AI_专项训练卷"):
     """将卡片列表打包为 .apkg 文件，自动区分填空卡和翻转卡"""
@@ -28,49 +27,11 @@ def export_to_apkg(cards, deck_name="AI_专项训练卷"):
             },
         ],
         css="""
-        /* 全局卡片样式 */
-        .card { font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; font-size: 19px; line-height: 1.7; color: #1f2937; background-color: #ffffff; padding: 10px; }
-        
-        /* 章节标题样式 */
-        h3.section-title { 
-            background: #EEF2FF; 
-            color: #4338CA; 
-            padding: 8px 12px; 
-            border-radius: 8px; 
-            margin: 0 0 15px 0; 
-            font-size: 0.9em; 
-            font-weight: 700; 
-            border-left: 5px solid #6366F1; 
-        }
-
-        /* ★★★ 核心：挖空样式改造 ★★★ */
-        /* 将默认的 [...] 变为“填空题横线”效果 */
-        .cloze { 
-            color: #B45309; /* 深橙色文字（即使被隐藏也保留颜色痕迹） */
-            background: #FEF3C7; /* 浅黄色背景，像试卷填空区 */
-            padding: 2px 8px; 
-            border-radius: 6px; 
-            font-weight: bold; 
-            border-bottom: 2px solid #F59E0B; /* 底部加粗横线 */
-        }
-
-        /* 答案区域美化 */
-        #answer { display: none; }
-        .answer-box { 
-            text-align: left; 
-            background: #F0FDF4; /* 浅绿色背景 */
-            padding: 20px; 
-            border-radius: 12px; 
-            border-left: 5px solid #10B981; 
-            margin-top: 25px; 
-            font-size: 0.95em; 
-            color: #14532D; 
-            line-height: 1.8;
-        }
-        
-        /* 段落间距 */
-        p { margin-bottom: 12px; }
-        br { margin-bottom: 8px; }
+        .card { font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; font-size: 19px; line-height: 1.7; color: #1f2937; }
+        h3.section-title { background: #EEF2FF; color: #4338CA; padding: 8px 12px; border-radius: 8px; margin: 12px 0 8px; font-size: 0.85em; font-weight: 600; border-left: 4px solid #6366F1; }
+        .cloze { color: #2563EB; font-weight: bold; background: #DBEAFE; padding: 2px 6px; border-radius: 5px; }
+        .answer-box { text-align: left; background: #F9FAFB; padding: 16px; border-radius: 10px; border-left: 4px solid #10B981; margin-top: 20px; font-size: 0.9em; color: #374151; }
+        br { margin-bottom: 6px; }
         """
     )
     
@@ -124,7 +85,6 @@ def export_to_apkg(cards, deck_name="AI_专项训练卷"):
     genanki.Package(deck).write_to_file(apkg_path)
     return apkg_path
 
-
 # ============ 🎨 网页 UI 样式 ============
 st.markdown("""
 <style>
@@ -172,7 +132,7 @@ def main():
         st.info("💡 **建议**\n• 每次 300~800 字效果最佳\n• 导出后可直接导入 Anki 桌面版")
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # 使用 Session State 保存生成的卡片，防止刷新丢失
+    # 使用 Session State 保存生成的卡片
     if 'cards' not in st.session_state:
         st.session_state.cards = []
 
@@ -182,42 +142,35 @@ def main():
             file_type = uploaded_file.name.split(".")[-1].lower()
             with st.status(f"📄 解析中...", expanded=True) as status:
                 try:
-                    if file_type == "txt": raw_text = uploaded_file.getvalue().decode("utf-8")
-from pypdf import PdfReader
-# ...
-elif file_type == "pdf":
-    with open("temp.pdf", "wb") as f:
-        f.write(uploaded_file.read())
-    reader = PdfReader("temp.pdf")
-    raw_text = "\n".join([page.extract_text() for page in reader.pages if page.extract_text()])
-    os.remove("temp.pdf")
+                    if file_type == "txt":
+                        raw_text = uploaded_file.getvalue().decode("utf-8")
+                    elif file_type == "pdf":
+                        with open("temp.pdf", "wb") as f:
+                            f.write(uploaded_file.read())
+                        reader = PdfReader("temp.pdf")
+                        raw_text = "\n".join([page.extract_text() for page in reader.pages if page.extract_text()])
+                        os.remove("temp.pdf")
                     elif file_type == "docx":
-                        with open("temp.docx", "wb") as f: f.write(uploaded_file.read())
+                        with open("temp.docx", "wb") as f:
+                            f.write(uploaded_file.read())
                         doc = Document("temp.docx")
                         raw_text = "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
                         os.remove("temp.docx")
                     status.update(label=f"✅ 提取 {len(raw_text)} 字符", state="complete")
                 except Exception as e:
-                    st.error(f"❌ 解析失败：{e}"); st.stop()
-        elif text_input.strip(): raw_text = text_input.strip()
-        else: st.warning("⚠️ 请输入内容"); st.stop()
+                    st.error(f"❌ 解析失败：{e}")
+                    st.stop()
+        elif text_input.strip():
+            raw_text = text_input.strip()
+        else:
+            st.warning("⚠️ 请输入内容")
+            st.stop()
 
         if raw_text:
             with st.spinner("🤖 AI 正在生成高强度训练卷..."):
                 st.session_state.cards = generate_cards(raw_text, mode=card_mode)
             st.rerun()
-            # ... 原有代码 ...
-            with st.spinner("🤖 AI 正在生成高强度训练卷..."):
-                cards = generate_cards(raw_text, mode=card_mode)
-            
-            # 🔍 调试：打印 AI 返回的原始数据
-            st.write("📊 调试信息 - 生成的卡片数量:", len(cards))
-            if cards:
-                st.write("📄 第一张卡片预览:", cards[0])
-            else:
-                st.error("⚠️ AI 未返回任何卡片，请检查：\n1. API Key 是否有效\n2. 文本内容是否足够长（至少 200 字）\n3. 终端是否有报错")
-                st.stop()
-      
+
     # 显示结果与下载
     if st.session_state.cards:
         st.markdown(f'<div class="success-banner">✨ 成功生成 {len(st.session_state.cards)} 组训练卡片</div>', unsafe_allow_html=True)
