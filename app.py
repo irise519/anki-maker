@@ -25,7 +25,7 @@ def format_cloze_text(text, show_answer=False):
     pattern = r'\{\{c\d+::(.*?)(?:::.+?)?\}\}'
     
     if show_answer:
-        # 背面：显示答案，用 **加粗** 和 ==高亮==
+        # 背面：显示答案，用 **加粗**
         def replacer_show(match):
             content = match.group(1)
             return f'**{content}**'
@@ -366,7 +366,8 @@ def main():
         st.markdown('<p class="page-subtitle">精心挑选的优质卡片，支持筛选与批量导出</p>', unsafe_allow_html=True)
         
         if not st.session_state.saved:
-            st.info("💎 暂无收藏，在制作页点击"⭐ 收藏此卡"即可加入。")
+            # 修复了这里的引号问题：外层用单引号
+            st.info('💎 暂无收藏，在制作页点击 "⭐ 收藏此卡" 即可加入。')
         else:
             filter_type = st.radio("筛选类型", ["全部", "cloze", "basic"], horizontal=True)
             display_cards = [c for c in st.session_state.saved if filter_type=="全部" or c.get('type')==filter_type]
