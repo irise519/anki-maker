@@ -13,23 +13,30 @@ from main import generate_cards
 # ============ 🎨 核心工具函数 ============
 def format_cloze_text(text, show_answer=False):
     """
-    将 Anki 语法 {{c1::答案}} 转换为 HTML 高亮样式
-    show_answer=False: 正面模式 (显示挖空)
-    show_answer=True:  背面模式 (显示答案)
+    将 Anki 语法 {{c1::答案}} 转换为 Markdown 高亮样式
     """
+    if not text:
+        return ""
+    
+    # 先清理可能的 HTML 标签
+    text = re.sub(r'<[^>]+>', '', text)
+    
     # 正则匹配 {{c1::答案}} 或 {{c1::答案::提示}}
     pattern = r'\{\{c\d+::(.*?)(?:::.+?)?\}\}'
     
-    def replacer(match):
-        content = match.group(1)
-        if show_answer:
-            # 背面：显示答案，绿色高亮
-            return f'<span class="cloze-answer">{content}</span>'
-        else:
-            # 正面：显示挖空，蓝色胶囊
-            return f'<span class="cloze-blank">[...]</span>'
-            
-    return re.sub(pattern, replacer, text)
+    if show_answer:
+        # 背面：显示答案，用 **加粗** 和 ==高亮==
+        def replacer_show(match):
+            content = match.group(1)
+            return f'**{content}**'
+        result = re.sub(pattern, replacer_show, text)
+    else:
+        # 正面：显示挖空，用 [___] 表示
+        def replacer_hide(match):
+            return '[___]'
+        result = re.sub(pattern, replacer_hide, text)
+    
+    return result
 
 def export_to_apkg(cards, deck_name="AI_导出牌组"):
     cloze_model = genanki.Model(
@@ -48,8 +55,8 @@ def export_to_apkg(cards, deck_name="AI_导出牌组"):
     deck = genanki.Deck(1584563749, deck_name)
     for card in cards:
         t = card.get('type', 'cloze')
-        front = card.get('front', '').replace('### ', '<h3 class="section-title">').replace('**', '')
-        back = card.get('back', '').replace('**', '').replace('\n', '<br>')
+        front = card.get('front', '').replace('### ', '#### ').replace('**', '')
+        back = card.get('back', '').replace('**', '').replace('\n', '\n\n')
         model = cloze_model if t == 'cloze' else basic_model
         deck.add_note(genanki.Note(model=model, fields=[front, back]))
         
@@ -58,7 +65,7 @@ def export_to_apkg(cards, deck_name="AI_导出牌组"):
     genanki.Package(deck).write_to_file(path)
     return path
 
-# ============ 🎨 全局 CSS (视觉升级) ============
+# ============ 🎨 全局 CSS ============
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
@@ -66,99 +73,110 @@ st.markdown("""
     body { font-family: 'Inter', "PingFang SC", sans-serif; }
     .stApp { background: #F3F4F6; }
     
-    /* 主容器 */
-    .main-container { background: white; border-radius: 20px; padding: 2.5rem; box-shadow: 0 10px 40px rgba(0,0,0,0.05); margin: 1rem auto; max-width: 1200px; border: 1px solid #F9FAFB; }
+    .main-container { background: white; border-radius: 20px; padding: 2.5rem; box-shadow: 0 10px 40px rgba(0,0,0,0.05); margin: 1rem auto; max-width: 1200px; }
     
-    /* 标题 */
-    .page-title { font-size: 2.8rem; font-weight: 800; color: #111827; margin: 0 0 0.5rem; letter-spacing: -0.02em; }
-    .page-subtitle { color: #6B7280; font-size: 1.1rem; margin-bottom: 2.5rem; font-weight: 400; }
+    .page-title { font-size: 2.8rem; font-weight: 800; color: #111827; margin: 0 0 0.5rem; }
+    .page-subtitle { color: #6B7280; font-size: 1.1rem; margin-bottom: 2.5rem; }
     
-    /* 侧边栏 */
     [data-testid="stSidebar"] { width: 280px !important; background: #FFFFFF !important; border-right: 1px solid #F3F4F6; }
-    .nav-btn { background: white; border: 1px solid #E5E7EB; border-radius: 12px; padding: 0.9rem 1rem; margin: 0.5rem 0; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 0.8rem; font-weight: 600; color: #4B5563; font-size: 0.95rem; }
-    .nav-btn:hover { background: #F9FAFB; border-color: #D1D5DB; transform: translateX(4px); }
+    
+    .nav-btn { background: white; border: 1px solid #E5E7EB; border-radius: 12px; padding: 0.9rem 1rem; margin: 0.5rem 0; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 0.8rem; font-weight: 600; color: #4B5563; }
+    .nav-btn:hover { background: #F9FAFB; transform: translateX(4px); }
     .nav-btn.active { background: #4F46E5; color: white; border-color: #4F46E5; box-shadow: 0 4px 12px rgba(79, 70, 229, 0.2); }
     
-    /* 🃏 卡片设计 (核心优化) */
     .flashcard { 
         background: #FFFFFF; 
-        border: 1px solid #E5E7EB; 
+        border: 2px solid #E5E7EB; 
         border-radius: 16px; 
         padding: 1.5rem; 
         margin: 1.5rem 0; 
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px -1px rgba(0, 0, 0, 0.02);
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.02);
         transition: all 0.3s ease;
-        position: relative;
-        overflow: hidden;
+        border-left: 5px solid #4F46E5;
     }
     .flashcard:hover { 
-        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 10px 10px -5px rgba(0, 0, 0, 0.01); 
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08); 
         transform: translateY(-2px);
         border-color: #C7D2FE;
     }
-    .flashcard::before {
-        content: '';
-        position: absolute;
-        top: 0; left: 0; width: 4px; height: 100%;
-        background: linear-gradient(to bottom, #4F46E5, #818CF8);
-    }
     
-    /* 卡片头部 */
-    .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.2rem; padding-bottom: 0.8rem; border-bottom: 1px solid #F3F4F6; }
-    .card-title { font-size: 1.1rem; font-weight: 700; color: #1F2937; display: flex; align-items: center; gap: 0.5rem; }
+    .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.2rem; padding-bottom: 0.8rem; border-bottom: 2px solid #F3F4F6; }
+    .card-title { font-size: 1.1rem; font-weight: 700; color: #1F2937; }
     
-    /* 标签 */
-    .badge { padding: 0.25rem 0.75rem; border-radius: 20px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+    .badge { padding: 0.3rem 0.8rem; border-radius: 20px; font-size: 0.75rem; font-weight: 700; }
     .badge-cloze { background: #EEF2FF; color: #4338CA; }
     .badge-basic { background: #ECFDF5; color: #047857; }
     
-    /* 内容区域 */
-    .card-content { font-size: 1.05rem; line-height: 1.8; color: #374151; margin-bottom: 1rem; }
-    .card-label { font-size: 0.85rem; font-weight: 600; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem; display: block; }
+    .content-box { 
+        background: #F9FAFB; 
+        padding: 1.2rem; 
+        border-radius: 10px; 
+        margin: 0.8rem 0;
+        border: 1px solid #F3F4F6;
+    }
     
-    /* 🕳️ 挖空样式 (Anki 风格) */
-    .cloze-blank { 
-        display: inline-block; 
-        background: #FEF3C7; 
-        color: #B45309; 
+    .content-label { 
+        font-size: 0.85rem; 
+        font-weight: 600; 
+        color: #6B7280; 
+        text-transform: uppercase; 
+        letter-spacing: 0.05em; 
+        margin-bottom: 0.5rem; 
+    }
+    
+    .front-text { font-size: 1.05rem; line-height: 1.8; color: #1F2937; }
+    .back-text { font-size: 1.05rem; line-height: 1.8; color: #047857; background: #ECFDF5; padding: 1rem; border-radius: 8px; }
+    
+    .cloze-highlight { 
+        background: #FDE68A; 
+        color: #92400E; 
         padding: 0 6px; 
         border-radius: 4px; 
         font-weight: 700; 
         border-bottom: 2px solid #F59E0B;
-        min-width: 40px;
-        text-align: center;
     }
-    .cloze-answer { 
-        display: inline-block; 
-        background: #D1FAE5; 
-        color: #047857; 
+    
+    .answer-highlight { 
+        background: #6EE7B7; 
+        color: #065F46; 
         padding: 0 6px; 
         border-radius: 4px; 
         font-weight: 700; 
-        border: 1px solid #10B981;
     }
     
-    /* 按钮组 */
-    .action-bar { display: flex; gap: 0.5rem; margin-top: 1rem; justify-content: flex-end; }
-    .btn-sm { padding: 0.4rem 0.8rem; border-radius: 8px; border: 1px solid #E5E7EB; background: white; color: #4B5563; font-size: 0.85rem; font-weight: 500; cursor: pointer; transition: all 0.2s; }
-    .btn-sm:hover { background: #F9FAFB; border-color: #D1D5DB; color: #111827; }
-    .btn-sm.primary { background: #4F46E5; color: white; border-color: #4F46E5; }
-    .btn-sm.primary:hover { background: #4338CA; }
+    .history-item { 
+        display: flex; 
+        justify-content: space-between; 
+        align-items: center; 
+        padding: 1.2rem; 
+        border-radius: 12px; 
+        background: #F9FAFB; 
+        margin-bottom: 0.8rem; 
+        border: 1px solid #F3F4F6; 
+        transition: all 0.2s; 
+    }
+    .history-item:hover { background: #FFFFFF; border-color: #E5E7EB; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
     
-    /* 历史记录行 */
-    .history-item { display: flex; justify-content: space-between; align-items: center; padding: 1.2rem; border-radius: 12px; background: #F9FAFB; margin-bottom: 0.8rem; border: 1px solid #F3F4F6; transition: all 0.2s; }
-    .history-item:hover { background: #FFFFFF; border-color: #E5E7EB; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
+    #MainMenu, footer { visibility: hidden; }
     
-    /* 响应式 */
+    .stButton>button { 
+        background: #4F46E5; 
+        color: white; 
+        border-radius: 10px; 
+        padding: 0.6rem 1.5rem; 
+        font-weight: 600; 
+        border: none; 
+    }
+    .stButton>button:hover { 
+        background: #4338CA; 
+        transform: translateY(-1px); 
+        box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3); 
+    }
+    
     @media (max-width: 768px) { 
         .main-container { padding: 1.5rem; } 
         .page-title { font-size: 2rem; } 
-        .flashcard { padding: 1rem; }
     }
-    
-    #MainMenu, footer { visibility: hidden; }
-    .stButton>button { background: #4F46E5; color: white; border-radius: 10px; padding: 0.6rem 1.5rem; font-weight: 600; border: none; }
-    .stButton>button:hover { background: #4338CA; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3); }
 </style>
 """, unsafe_allow_html=True)
 
@@ -252,38 +270,49 @@ def main():
                     badge_class = "badge-cloze" if t=='cloze' else "badge-basic"
                     badge_name = "FILL_BLANK" if t=='cloze' else "Q&A"
                     
-                    # 渲染正面 (挖空显示)
-                    front_html = format_cloze_text(c.get('front', ''), show_answer=False)
-                    # 渲染背面 (答案显示)
-                    back_html = format_cloze_text(c.get('back', ''), show_answer=True)
+                    # 处理文本 - 正面（挖空）
+                    front_raw = c.get('front', '')
+                    front_clean = front_raw.replace('### ', '').replace('**', '')
+                    front_display = format_cloze_text(front_clean, show_answer=False)
                     
-                    st.markdown(f"""
-                    <div class="flashcard">
-                        <div class="card-header">
-                            <div class="card-title">📇 卡片 #{i+1} <span class="badge {badge_class}">{badge_name}</span></div>
-                        </div>
-                        
-                        <div style="margin-bottom:1rem;">
-                            <span class="card-label">🔹 正面 (问题)</span>
-                            <div class="card-content">{front_html}</div>
-                        </div>
-                        
-                        <div style="background:#F9FAFB; padding:1rem; border-radius:8px; border:1px dashed #E5E7EB;">
-                            <span class="card-label">🔸 背面 (答案)</span>
-                            <div class="card-content" style="color:#047857;">{back_html}</div>
-                        </div>
-                        
-                        <div class="action-bar">
-                            <button class="btn-sm" onclick="navigator.clipboard.writeText(`{c['front'].replace('`','\\`')}`).then(()=>this.innerText='✅ 已复制正面')" style="cursor:pointer;">📋 复制正面</button>
-                            <button class="btn-sm" onclick="navigator.clipboard.writeText(`{c['back'].replace('`','\\`')}`).then(()=>this.innerText='✅ 已复制背面')" style="cursor:pointer;">📋 复制背面</button>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
+                    # 处理文本 - 背面（答案）
+                    back_raw = c.get('back', '')
+                    back_clean = back_raw.replace('**', '').replace('\n', ' ')
+                    back_display = format_cloze_text(back_clean, show_answer=True)
                     
-                    # 保存按钮 (Streamlit 原生)
-                    if st.button(f"⭐ 收藏此卡", key=f"save_{i}"):
-                        st.session_state.saved.append(c)
-                        st.toast("✅ 已添加到收藏库！", icon="💎")
+                    # 使用 Streamlit 原生组件显示
+                    with st.container():
+                        st.markdown(f"""
+                        <div class="flashcard">
+                            <div class="card-header">
+                                <div class="card-title">📇 卡片 #{i+1}</div>
+                                <span class="badge {badge_class}">{badge_name}</span>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        # 正面
+                        st.markdown('<div class="content-label">🔹 正面（问题）</div>', unsafe_allow_html=True)
+                        st.markdown(f'<div class="content-box front-text">{front_display}</div>', unsafe_allow_html=True)
+                        
+                        # 背面
+                        st.markdown('<div class="content-label">🔸 背面（答案）</div>', unsafe_allow_html=True)
+                        st.markdown(f'<div class="content-box back-text">{back_display}</div>', unsafe_allow_html=True)
+                        
+                        # 操作按钮
+                        col1, col2, col3 = st.columns([1, 1, 2])
+                        with col1:
+                            if st.button("📋 复制正面", key=f"copy_f_{i}"):
+                                st.code(front_clean, language=None)
+                        with col2:
+                            if st.button("📋 复制背面", key=f"copy_b_{i}"):
+                                st.code(back_clean, language=None)
+                        with col3:
+                            if st.button("⭐ 收藏此卡", key=f"save_{i}"):
+                                st.session_state.saved.append(c)
+                                st.toast("✅ 已添加到收藏库！", icon="💎")
+                        
+                        st.markdown("<br>", unsafe_allow_html=True)
                 
                 # 底部导出
                 st.markdown("---")
@@ -326,7 +355,6 @@ def main():
                         path = export_to_apkg(rec['cards'], f"History_{idx}")
                         with open(path,"rb") as f: st.download_button("⬇️", f, f"history_{idx}.apkg", "application/octet-stream")
 
-            # 批量导出
             all_cards = [c for r in st.session_state.history for c in r['cards']]
             if all_cards and st.button("📦 导出全部历史记录", type="secondary", use_container_width=True):
                 path = export_to_apkg(all_cards, "All_History")
@@ -338,7 +366,7 @@ def main():
         st.markdown('<p class="page-subtitle">精心挑选的优质卡片，支持筛选与批量导出</p>', unsafe_allow_html=True)
         
         if not st.session_state.saved:
-            st.info("💎 暂无收藏，在制作页点击“⭐ 收藏此卡”即可加入。")
+            st.info("💎 暂无收藏，在制作页点击"⭐ 收藏此卡"即可加入。")
         else:
             filter_type = st.radio("筛选类型", ["全部", "cloze", "basic"], horizontal=True)
             display_cards = [c for c in st.session_state.saved if filter_type=="全部" or c.get('type')==filter_type]
@@ -349,6 +377,8 @@ def main():
             for i, c in enumerate(display_cards):
                 t = c.get('type','cloze')
                 badge_class = "badge-cloze" if t=='cloze' else "badge-basic"
+                front_preview = format_cloze_text(c.get('front', '').replace('### ', '').replace('**', ''), show_answer=False)
+                
                 col = cols[i%2]
                 with col:
                     st.markdown(f"""
@@ -357,11 +387,9 @@ def main():
                             <span class="badge {badge_class}">{t.upper()}</span>
                             <span style="font-size:0.8rem;color:#9CA3AF;">#{st.session_state.saved.index(c)+1}</span>
                         </div>
-                        <div style="font-size:0.9rem;line-height:1.6;color:#4B5563;max-height:100px;overflow:hidden;">
-                            {format_cloze_text(c['front'], show_answer=False)}
-                        </div>
                     </div>
                     """, unsafe_allow_html=True)
+                    st.markdown(f'<div style="font-size:0.9rem;line-height:1.6;color:#4B5563;">{front_preview[:150]}...</div>', unsafe_allow_html=True)
                     
                     if st.button("🗑️ 删除", key=f"del_saved_{i}"):
                         st.session_state.saved.remove(c)
