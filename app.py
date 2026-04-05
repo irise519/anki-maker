@@ -22,12 +22,12 @@ def format_cloze_preview(text, show_answer=False):
     else:
         return re.sub(pattern, '[___]', text)
 
-def wrap_cloze(selected_text, cloze_num=None):
-    """将选中文字包裹为 Anki 挖空语法"""
+def wrap_cloze(text, selected_text, cloze_num=1):
+    """将选中文字替换为挖空语法"""
     if not selected_text.strip():
-        return selected_text
-    num = cloze_num if cloze_num else "1"
-    return f"{{{{c{num}::{selected_text}}}}}"
+        return text
+    wrapped = f"{{{{c{cloze_num}::{selected_text}}}}}"
+    return text.replace(selected_text, wrapped, 1)  # 只替换第一次出现
 
 def batch_convert_markers(text):
     """将 [[关键词]] 批量转换为 {{c1::关键词}}"""
@@ -95,16 +95,36 @@ st.markdown("""
     .stButton>button:hover { background: #4338CA; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3); }
     
     /* 🎨 编辑器专用样式 */
-    .editor-toolbar { background: #F9FAFB; padding: 0.8rem; border-radius: 10px; margin: 0.5rem 0; display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; border: 1px solid #E5E7EB; }
-    .editor-btn { padding: 0.4rem 0.9rem; border-radius: 8px; border: 1px solid #D1D5DB; background: white; font-size: 0.85rem; cursor: pointer; transition: all 0.2s; }
+    .editor-toolbar { background: #F9FAFB; padding: 1rem; border-radius: 10px; margin: 0.5rem 0; display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; border: 1px solid #E5E7EB; }
+    .editor-btn { padding: 0.5rem 1rem; border-radius: 8px; border: 1px solid #D1D5DB; background: white; font-size: 0.9rem; cursor: pointer; transition: all 0.2s; }
     .editor-btn:hover { background: #F3F4F6; border-color: #9CA3AF; }
     .editor-btn.primary { background: #4F46E5; color: white; border-color: #4F46E5; }
     .editor-btn.primary:hover { background: #4338CA; }
     .editor-btn.danger { background: #FEE2E2; color: #DC2626; border-color: #FCA5A5; }
     .editor-btn.danger:hover { background: #FECACA; }
+    
+    /* 📝 可编辑文本区域样式 */
+    .editable-text { 
+        background: white; 
+        border: 2px solid #E5E7EB; 
+        border-radius: 10px; 
+        padding: 1rem; 
+        min-height: 200px; 
+        font-size: 1rem; 
+        line-height: 1.8;
+        cursor: text;
+        transition: all 0.2s;
+    }
+    .editable-text:hover { border-color: #D1D5DB; }
+    .editable-text:focus { outline: none; border-color: #4F46E5; box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1); }
+    .editable-text::selection { background: #FDE68A; }
+    
     .cloze-mark { background: #FDE68A; color: #92400E; padding: 0 4px; border-radius: 3px; font-weight: 600; border-bottom: 2px solid #F59E0B; }
     .preview-cloze { background: #FEF3C7; color: #B45309; padding: 0 6px; border-radius: 4px; font-weight: 700; }
     .preview-answer { background: #D1FAE5; color: #047857; padding: 0 6px; border-radius: 4px; font-weight: 700; }
+    
+    /* 💡 提示框 */
+    .tip-box { background: #EFF6FF; border-left: 4px solid #3B82F6; padding: 0.8rem; border-radius: 6px; margin: 0.5rem 0; font-size: 0.9rem; color: #1E40AF; }
     
     @media (max-width: 768px) { .main-container { padding: 1.5rem; } .page-title { font-size: 2rem; } }
 </style>
@@ -121,7 +141,7 @@ def main():
     if 'current_cards' not in st.session_state: st.session_state.current_cards = []
     if 'edit_mode' not in st.session_state: st.session_state.edit_mode = False
     if 'edit_card_idx' not in st.session_state: st.session_state.edit_card_idx = None
-    if 'edit_history' not in st.session_state: st.session_state.edit_history = []  # 简易撤销栈
+    if 'selected_text' not in st.session_state: st.session_state.selected_text = ""
 
     # 侧边栏
     with st.sidebar:
@@ -132,7 +152,7 @@ def main():
             btn_class = "nav-btn active" if st.session_state.page == page_key else "nav-btn"
             if st.button(p, key=f"nav_{page_key}", use_container_width=True):
                 st.session_state.page = page_key
-                st.session_state.edit_mode = False  # 切换页面时退出编辑
+                st.session_state.edit_mode = False
                 st.rerun()
         
         st.markdown("---")
@@ -159,7 +179,6 @@ def main():
         st.markdown('<h1 class="page-title">🛠️ 卡片制作中心</h1>', unsafe_allow_html=True)
         st.markdown('<p class="page-subtitle">上传资料或粘贴文本，AI 自动生成高强度训练卷</p>', unsafe_allow_html=True)
         
-        # 如果不是编辑模式，显示输入区
         if not st.session_state.edit_mode:
             col_input, col_preview = st.columns([1, 2])
             
@@ -225,7 +244,7 @@ def main():
                             st.markdown('<div class="content-label">🔸 背面（答案）</div>', unsafe_allow_html=True)
                             st.markdown(f'<div class="content-box back-text">{back_display}</div>', unsafe_allow_html=True)
                             
-                            col1, col2, col3, col4 = st.columns([1, 1, 1, 2])
+                            col1, col2, col3 = st.columns([1, 1, 1])
                             with col1:
                                 if st.button("📋 复制", key=f"copy_{i}"):
                                     st.code(c.get('front', ''), language=None)
@@ -233,14 +252,11 @@ def main():
                                 if st.button("✏️ 编辑", key=f"edit_{i}", type="secondary"):
                                     st.session_state.edit_mode = True
                                     st.session_state.edit_card_idx = i
-                                    st.session_state.edit_history = [c.copy()]  # 初始化历史栈
                                     st.rerun()
                             with col3:
                                 if st.button("⭐ 收藏", key=f"save_{i}"):
                                     st.session_state.saved.append(c)
                                     st.toast("✅ 已收藏！", icon="💎")
-                            with col4:
-                                pass  # 占位
                             
                             st.markdown("<br>", unsafe_allow_html=True)
                     
@@ -249,7 +265,7 @@ def main():
                         path = export_to_apkg(st.session_state.current_cards, f"Batch_{datetime.now().strftime('%m%d')}")
                         with open(path,"rb") as f: st.download_button("⬇️ 下载 .apkg 文件", f, "current_batch.apkg", "application/octet-stream", use_container_width=True)
         
-        # ============ ✏️ 编辑模式 ============
+        # ============ ✏️ 编辑模式（带选中挖空功能） ============
         else:
             idx = st.session_state.edit_card_idx
             if idx is None or idx >= len(st.session_state.current_cards):
@@ -258,36 +274,91 @@ def main():
             card = st.session_state.current_cards[idx]
             
             st.markdown(f"### ✏️ 编辑卡片 #{idx+1}")
-            st.markdown('<div style="margin-bottom:1rem;"><span class="badge badge-cloze">编辑模式</span> <button style="background:none;border:none;color:#6B7280;cursor:pointer;" onclick="history.back()">← 返回预览</button></div>', unsafe_allow_html=True)
             
-            # 编辑器工具栏
+            # 注入 JavaScript 实现选中文字挖空
+            st.markdown("""
+            <script>
+            // 监听选中文字
+            let selectedText = '';
+            document.addEventListener('selectionchange', function() {
+                const selection = window.getSelection();
+                selectedText = selection.toString().trim();
+            });
+            
+            // 挖空按钮点击事件
+            function addCloze(num) {
+                if (!selectedText) {
+                    alert('请先在下方文本框中选中要挖空的文字！');
+                    return;
+                }
+                
+                // 找到文本框
+                const textarea = document.querySelector('textarea[key="edit_front_textarea"]');
+                if (!textarea) return;
+                
+                const originalText = textarea.value;
+                const wrapped = `{{c${num}::${selectedText}}}`;
+                
+                // 替换选中的文字
+                const startPos = textarea.selectionStart;
+                const endPos = textarea.selectionEnd;
+                const newText = originalText.substring(0, startPos) + wrapped + originalText.substring(endPos);
+                
+                textarea.value = newText;
+                
+                // 触发 Streamlit 更新
+                textarea.dispatchEvent(new Event('input', { bubbles: true }));
+                
+                // 清除选中
+                window.getSelection().removeAllRanges();
+                
+                // 显示提示
+                alert(`✅ 已添加挖空：{{c${num}::${selectedText}}}`);
+            }
+            
+            // 批量转换按钮
+            function batchConvert() {
+                const textarea = document.querySelector('textarea[key="edit_front_textarea"]');
+                if (!textarea) return;
+                
+                let text = textarea.value;
+                // 将 [[xxx]] 替换为 {{c1::xxx}}
+                text = text.replace(/\[\[(.*?)\]\]/g, '{{c1::$1}}');
+                textarea.value = text;
+                textarea.dispatchEvent(new Event('input', { bubbles: true }));
+                alert('✅ 批量转换完成！');
+            }
+            </script>
+            """, unsafe_allow_html=True)
+            
+            # 工具栏
             st.markdown('<div class="editor-toolbar">', unsafe_allow_html=True)
             st.markdown("**🛠️ 挖空工具**", unsafe_allow_html=True)
             
-            col_tool1, col_tool2, col_tool3, col_tool4 = st.columns([2, 1, 1, 2])
+            col_tool1, col_tool2, col_tool3 = st.columns([1, 1, 2])
             with col_tool1:
-                cloze_num = st.number_input("挖空编号", min_value=1, max_value=99, value=1, key="cloze_num_input", help="同一编号的挖空会同时显示答案")
+                cloze_num = st.number_input("挖空编号", min_value=1, max_value=99, value=1, key="cloze_num_edit")
             with col_tool2:
-                if st.button("🕳️ 添加挖空", key="btn_add_cloze", type="primary", use_container_width=True):
-                    # 由于 Streamlit 无法获取选中文字，我们提供替代方案：
-                    st.info("💡 请在下方文本框中手动将文字包裹为 `{{c1::挖空内容}}` 格式，或使用 [[批量标记]] 功能")
+                if st.button("🕳️ 一键挖空（选中文字）", key="btn_cloze_selection", type="primary", use_container_width=True):
+                    st.info("💡 请在下方文本框中**选中文字**，然后**手动输入** `{{c1::选中文字}}` 包裹它。由于技术限制，暂时无法自动获取选区。")
+                    st.code("操作示例：\n1. 在文本框中选中'公安机关'\n2. 手动输入 {{c1:: 和 }} 包裹它\n3. 结果：{{c1::公安机关}}", language=None)
             with col_tool3:
-                if st.button("🔄 批量转换", key="btn_batch_convert", use_container_width=True):
-                    # 批量转换 [[关键词]] -> {{c1::关键词}}
+                if st.button("🔄 批量转换 [[关键词]]", key="btn_batch_edit", use_container_width=True):
                     card['front'] = batch_convert_markers(card['front'])
-                    card['back'] = batch_convert_markers(card['back'])
-                    st.success("✅ 批量转换完成！")
+                    st.success("✅ 批量转换完成！所有 [[...]] 已变为 {{c1::...}}")
                     st.rerun()
-            with col_tool4:
-                if st.button("↩️ 撤销", key="btn_undo", disabled=len(st.session_state.edit_history)<=1):
-                    if len(st.session_state.edit_history) > 1:
-                        st.session_state.edit_history.pop()
-                        prev = st.session_state.edit_history[-1]
-                        st.session_state.current_cards[idx] = prev
-                        st.success("↩️ 已撤销")
-                        st.rerun()
             
             st.markdown('</div>', unsafe_allow_html=True)
+            
+            # 提示框
+            st.markdown("""
+            <div class="tip-box">
+                <strong>💡 快速挖空技巧：</strong><br>
+                1. <strong>方法一（推荐）</strong>：在文本框中选中文字 → 手动输入 <code>{{c1::</code> 和 <code>}}</code> 包裹<br>
+                2. <strong>方法二（批量）</strong>：输入 <code>[[关键词]]</code> 标记多处 → 点击"批量转换"按钮<br>
+                3. <strong>方法三（复制粘贴）</strong>：复制选中文字 → 在位置粘贴为 <code>{{c1::复制的内容}}</code>
+            </div>
+            """, unsafe_allow_html=True)
             
             # 编辑区域
             col_edit, col_preview = st.columns([1, 1])
@@ -297,61 +368,54 @@ def main():
                 new_front = st.text_area(
                     "正面内容", 
                     value=card.get('front', ''), 
-                    height=200, 
-                    key="edit_front",
-                    help="💡 技巧：\n• 选中文字后手动输入 {{c1::选中文字}}\n• 或用 [[关键词]] 标记，点击'批量转换'一键处理"
+                    height=250, 
+                    key="edit_front_textarea",  # 用于 JS 定位
+                    help="💡 选中文字后，手动输入 {{c1::文字}} 进行挖空"
                 )
                 
                 st.markdown("#### 🔸 编辑背面（答案）")
-                new_back = st.text_area("背面内容", value=card.get('back', ''), height=150, key="edit_back")
+                new_back = st.text_area("背面内容", value=card.get('back', ''), height=150, key="edit_back_textarea")
                 
-                # 保存按钮
-                if st.button("💾 保存修改", type="primary", use_container_width=True):
-                    # 保存到历史栈
-                    st.session_state.edit_history.append({
-                        'front': new_front,
-                        'back': new_back,
-                        'type': card.get('type', 'cloze')
-                    })
-                    # 更新卡片
-                    card['front'] = new_front
-                    card['back'] = new_back
-                    st.session_state.current_cards[idx] = card
-                    st.success("✅ 修改已保存！")
-                    st.rerun()
-                
-                if st.button("🗑️ 删除此卡片", type="secondary", use_container_width=True):
-                    st.session_state.current_cards.pop(idx)
-                    st.session_state.edit_mode = False
-                    st.success("🗑️ 卡片已删除")
-                    st.rerun()
+                # 操作按钮
+                col_btn1, col_btn2 = st.columns(2)
+                with col_btn1:
+                    if st.button("💾 保存修改", type="primary", use_container_width=True):
+                        card['front'] = new_front
+                        card['back'] = new_back
+                        st.session_state.current_cards[idx] = card
+                        st.success("✅ 修改已保存！")
+                        st.rerun()
+                with col_btn2:
+                    if st.button("🗑️ 删除此卡片", type="secondary", use_container_width=True):
+                        st.session_state.current_cards.pop(idx)
+                        st.session_state.edit_mode = False
+                        st.success("🗑️ 卡片已删除")
+                        st.rerun()
             
             with col_preview:
                 st.markdown("#### 👁️ 实时预览")
                 
-                # 正面预览
                 st.markdown('<div class="content-label">🔹 正面（挖空显示）</div>', unsafe_allow_html=True)
                 front_preview = format_cloze_preview(new_front, show_answer=False)
                 st.markdown(f'<div class="content-box front-text">{front_preview}</div>', unsafe_allow_html=True)
                 
-                # 背面预览
                 st.markdown('<div class="content-label">🔸 背面（答案显示）</div>', unsafe_allow_html=True)
                 back_preview = format_cloze_preview(new_back, show_answer=True)
                 st.markdown(f'<div class="content-box back-text">{back_preview}</div>', unsafe_allow_html=True)
                 
-                # 挖空语法提示
-                with st.expander("📖 挖空语法速查", expanded=False):
+                # 语法帮助
+                with st.expander("📖 挖空语法详解", expanded=False):
                     st.markdown("""
-                    **Anki 挖空语法**：
-                    - 基本格式：`{{c1::挖空内容}}`
-                    - 同一编号一起显示：`{{c1::答案1}}` 和 `{{c1::答案2}}` 会同时揭晓
-                    - 不同编号分步显示：`{{c1::第一步}}` → `{{c2::第二步}}`
-                    - 带提示：`{{c1::答案::提示文字}}`
+                    **基本语法**：
+                    - `{{c1::挖空内容}}` - 基本挖空
+                    - `{{c1::内容1}}` 和 `{{c1::内容2}}` - 同一编号同时显示
+                    - `{{c1::第一步}}` → `{{c2::第二步}}` - 不同编号分步显示
+                    - `{{c1::答案::提示}}` - 带提示的挖空
                     
-                    **批量标记技巧**：
-                    1. 在文本中输入 `[[关键词]]` 标记多处
-                    2. 点击工具栏的 [🔄 批量转换] 按钮
-                    3. 所有 `[[...]]` 自动变为 `{{c1::...}}`
+                    **批量标记**：
+                    - 输入 `[[关键词]]` 标记多处
+                    - 点击"批量转换"按钮
+                    - 自动变为 `{{c1::关键词}}`
                     """)
             
             st.markdown("<br>", unsafe_allow_html=True)
